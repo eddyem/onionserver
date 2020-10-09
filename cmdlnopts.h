@@ -31,7 +31,8 @@ typedef struct{
     int dumpSessDB;         // dump session database
     int runServer;          // run as server
     int useradd;            // add user[s]
-    char *port;             // port to listen
+    char *port;             // server port to listen
+    char *wsport;           // websocket port to listen (!= port !!!)
     char *certfile;         // file with SSL certificate
     char *keyfile;          // file with SSL key
     char *usersdb;          // users database name
@@ -39,6 +40,7 @@ typedef struct{
     char **userdel;         // user names to delete
     long long delatime;     // minimal atime to delete sessions from DB
     char *delsession;       // delete session by sessID or sockID
+    char *logfilename;      // name of log file
     int rest_pars_num;      // number of rest parameters
     char** rest_pars;       // the rest parameters: array of char*
 } glob_pars;

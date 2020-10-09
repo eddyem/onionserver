@@ -30,6 +30,9 @@ else()
     set(CMAKE_BUILD_TYPE RELEASE)
 endif()
 
+#pthreads
+find_package(Threads REQUIRED)
+
 ###### pkgconfig ######
 # pkg-config modules (for pkg-check-modules)
 set(MODULES usefull_macros sqlite3)
@@ -62,7 +65,7 @@ add_definitions(${CFLAGS} -DLOCALEDIR=\"${LOCALEDIR}\"
         -DMAJOR_VERSION=\"${MAJOR_VESION}\")
 
 # -l
-target_link_libraries(${PROJ} ${${PROJ}_LIBRARIES} -lm)
+target_link_libraries(${PROJ} ${${PROJ}_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} -lm)
 
 # Installation of the program
 INSTALL(TARGETS ${PROJ} DESTINATION "bin")

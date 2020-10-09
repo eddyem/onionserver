@@ -1,0 +1,2 @@
+cleaning:
+sqlite3 users.db "vacuum;" 

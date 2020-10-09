@@ -10,8 +10,9 @@ auth = function(){
 		$("inout").onclick = auth.logout;
 	}
 	function _wsk(request){
-		var wsKey = request.responseText;
+		wsKey = request.responseText;
 		if(wsKey) console.log("Web key received: " + wsKey);
+		wsinit();
 	}
 	function reqAuth(request){
 		var txt = request.responseText;
@@ -62,10 +63,34 @@ auth = function(){
 		var str = "auth/?login=" + l + "&passwd=" + p;
 		sendrequest(str, reqAuth);
 	}
+	// websockets
+	var ws;
+	function wsinit(){
+		delete(ws);
+		ws = new WebSocket('wss://localhost:8081');
+		ws.onopen = function(){ws.send("Akey="+wsKey);}; // send key after init
+		ws.onclose = function(evt){
+			var text = "WebSocket closed: ";
+			if(evt.wasClean) text += "by remote side";
+			else text += "connection lost"
+			$('wsmsgs').innerHTML = text;
+		};
+		ws.onmessage = function(evt){
+			$('wsmsgs').innerHTML = evt.data;
+		}
+		ws.onerror = function(err){
+			parseErr("WebSocket error " + err.message);
+		}
+	}
+	function wssend(txt){
+		ws.send(txt);
+	}
 	return{
 		init: init1,
 		login: login1,
 		logout: logout1,
-		send: sendlogpass
+		send: sendlogpass,
+		wssend: wssend,
+		wsinit: wsinit
 	};
 }();

@@ -31,6 +31,7 @@ static int help;
 // global parameters (init with default):
 glob_pars G = {
     .port = "8080",
+    .wsport = "8081",
     .certfile = "cert.pem",
     .keyfile  = "cert.key",
 };
@@ -46,7 +47,8 @@ static myoption cmdlnopts[] = {
     {"dumpusers", NO_ARGS,  NULL,   'U',    arg_int,    APTR(&G.dumpUserDB),_("dump users database")},
     {"dumpsess", NO_ARGS,   NULL,   'S',    arg_int,    APTR(&G.dumpSessDB),_("dump session database")},
     {"server",  NO_ARGS,    NULL,   'r',    arg_int,    APTR(&G.runServer), _("run server process")},
-    {"port",    NEED_ARG,   NULL,   'p',    arg_string, APTR(&G.port),      _("port to listen")},
+    {"port",    NEED_ARG,   NULL,   'p',    arg_string, APTR(&G.port),      _("server port to listen")},
+    {"wsport",  NEED_ARG,   NULL,   'P',    arg_string, APTR(&G.wsport),    _("websocket port to listen (!= server port!)")},
     {"certfile",NEED_ARG,   NULL,   'c',    arg_string, APTR(&G.certfile),  _("file with SSL certificate")},
     {"keyfile", NEED_ARG,   NULL,   'k',    arg_string, APTR(&G.keyfile),   _("file with SSL key")},
     {"usersdb", NEED_ARG,   NULL,   'u',    arg_string, APTR(&G.usersdb),   _("users database filename")},
@@ -55,6 +57,7 @@ static myoption cmdlnopts[] = {
     {"useradd", NO_ARGS,    NULL,   'a',    arg_int,    APTR(&G.useradd),   _("add user[s] interactively")},
     {"sdatime", NEED_ARG,   NULL,   'A',    arg_longlong,APTR(&G.delatime), _("minimal atime to delete sessions from DB (-1 for >year)")},
     {"sessdel", NEED_ARG,   NULL,   'l',    arg_string, APTR(&G.delsession),_("delete session by sessID or sockID")},
+    {"logfile", NEED_ARG,   NULL,   'L',    arg_string, APTR(&G.logfilename),_("log file name")},
    end_option
 };
 

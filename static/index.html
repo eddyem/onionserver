@@ -7,7 +7,11 @@
 <body onload="auth.init();">
 <p>Text
 <p>More text
+<button onclick="auth.wsinit();">Push me</button>
 <p>
+<div id="wsmsgs"></div>
 <div id="errmsg" style='background-color: red;'></div>
+<p>
+<input type="text" id="wssnd" onchange="auth.wssend($('wssnd').value);">
 </body>
 </html>
