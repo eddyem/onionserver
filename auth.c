@@ -164,7 +164,7 @@ onion_connection_status auth(_U_ onion_handler *h, onion_request *req, onion_res
     sessinfo *session = qookieSession(req);
     if(!session) DBG("No cookie, need to create\n");
     else if(!logout){
-        onion_response_write0(res, "AuthOK");
+        onion_response_write0(res, AUTH_ANS_AUTHOK);
         goto closeconn;
     }
     const char *username = NULL, *passwd = NULL;
@@ -174,7 +174,7 @@ onion_connection_status auth(_U_ onion_handler *h, onion_request *req, onion_res
             if(deleteSession(session->sessID))
                 WARNX("Can't delete session with ID=%s from database", session->sessID);
         }
-        onion_response_write0(res, "LogOut");
+        onion_response_write0(res, AUTH_ANS_LOGOUT);
         onion_response_add_cookie(res, SESSION_COOKIE_NAME, "clear", 0, "/", NULL, OC_HTTP_ONLY|OC_SECURE);
         goto closeconn;
     }else{ // log in
@@ -182,13 +182,13 @@ onion_connection_status auth(_U_ onion_handler *h, onion_request *req, onion_res
         username = getQdata(req, "login");
         if(!username){
             ONION_WARNING("no login field -> need auth");
-            onion_response_write0(res, "NeedAuth");
+            onion_response_write0(res, AUTH_ANS_NEEDAUTH);
             return OCS_CLOSE_CONNECTION;
         }
         passwd = getQdata(req, "passwd");
         if(!passwd){
             ONION_WARNING("Trying to enter authenticated area without password");
-            onion_response_write0(res, "No password");
+            onion_response_write0(res, AUTH_ANS_NOPASSWD);
             return OCS_FORBIDDEN;
         }
     }
@@ -235,7 +235,7 @@ onion_connection_status auth(_U_ onion_handler *h, onion_request *req, onion_res
         sleep(2);
     }while(1);
     onion_response_add_cookie(res, SESSION_COOKIE_NAME, session->sessID, 366*86400, "/", NULL, OC_HTTP_ONLY|OC_SECURE);
-    onion_response_write0(res, "AuthOK");
+    onion_response_write0(res, AUTH_ANS_AUTHOK);
 closeconn:
     freeSessInfo(&session);
     return OCS_CLOSE_CONNECTION;

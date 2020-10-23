@@ -24,6 +24,12 @@
 
 #define SESSION_COOKIE_NAME     "Acookie"
 
+// standard answers to client
+#define AUTH_ANS_NEEDAUTH   "NeedAuth"
+#define AUTH_ANS_AUTHOK     "AuthOK"
+#define AUTH_ANS_LOGOUT     "LogOut"
+#define AUTH_ANS_NOPASSWD   "NoPassword"
+
 typedef struct{
     char *username;     // user name
     char *password;     // password hash (SHA512)

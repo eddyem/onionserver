@@ -16,6 +16,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "auth.h"
 #include "websockets.h"
 
 #include <errno.h>
@@ -26,8 +27,14 @@
 
 #define BUFLEN 255
 
-static onion_connection_status websocket_cont(_U_ void *data, onion_websocket *ws, ssize_t dlen){
+// bit-fields of `data` field (websocket_cont)
+#define WS_FLAG_NOTAUTHORIZED   1
+
+TODO: add logout!
+
+static onion_connection_status websocket_cont(void *data, onion_websocket *ws, ssize_t dlen){
     FNAME();
+    uint32_t flags = *((uint32_t*)data);
     char tmp[BUFLEN+1];
     if(dlen > BUFLEN) dlen = BUFLEN;
 
@@ -37,9 +44,30 @@ static onion_connection_status websocket_cont(_U_ void *data, onion_websocket *w
         return OCS_NEED_MORE_DATA;
     }
     tmp[len] = 0;
+    //ONION_INFO("Read from websocket: %s (len=%d)", tmp, len);
     DBG("WS: got %s", tmp);
-    onion_websocket_printf(ws, "Echo: %s", tmp);
-    ONION_INFO("Read from websocket: %d: %s", len, tmp);
+    if(flags & WS_FLAG_NOTAUTHORIZED){ // not authorized over websocket
+        sessinfo *session = NULL;
+        if(strncmp(tmp, "Akey=", 5) == 0){ // got authorized key - check it
+            char *key = tmp + 5;
+            session = getSession(key);
+            /* here we should make a proper check, but for now do simplest */
+        }
+        if(!session){
+            onion_websocket_printf(ws, AUTH_ANS_NEEDAUTH);
+            WARNX("Wrong websocket session ID");
+            return OCS_FORBIDDEN;
+        }
+        flags &= ~WS_FLAG_NOTAUTHORIZED; // clear non-authorized flag
+        return OCS_NEED_MORE_DATA;
+    }
+    char *eq = strchr(tmp, '=');
+    if(eq){
+        *eq++ = 0;
+        onion_websocket_printf(ws, "parameter: '%s', its value: '%s'", tmp, eq);
+    }else{
+        onion_websocket_printf(ws, "Echo: %s", tmp);
+    }
     return OCS_NEED_MORE_DATA;
 }
 
@@ -52,8 +80,11 @@ onion_connection_status websocket_run(_U_ void *data, onion_request *req, onion_
         return OCS_PROCESSED;
     }
     DBG("WS ready");
-    green("RDY\n");
-    onion_websocket_printf(ws, "Hello from server. Write something to echo it");
+    const char *host = onion_request_get_client_description(req);
+    const char *UA = onion_request_get_header(req, "User-Agent");
+    green("Got WS connection from %s (UA: %s)\n", host, UA);
+    uint32_t *flags = calloc(1, 4);
+    onion_websocket_set_userdata(ws, (void*)flags, free);
     onion_websocket_set_callback(ws, websocket_cont);
     return OCS_WEBSOCKET;
 }
