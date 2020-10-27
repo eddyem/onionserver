@@ -20,6 +20,7 @@
 #include "websockets.h"
 
 #include <errno.h>
+#include <onion/dict.h>
 #include <onion/log.h>
 #include <stdio.h>
 #include <string.h>
@@ -29,12 +30,26 @@
 
 // bit-fields of `data` field (websocket_cont)
 #define WS_FLAG_NOTAUTHORIZED   1
+typedef struct{
+    uint64_t UAhash;
+    uint64_t IPhash;
+    uint64_t flags;
+} WSdata;
 
-TODO: add logout!
+// https://stackoverflow.com/a/57960443/1965803
+static uint64_t MurmurOAAT64(const char *key){
+    uint64_t h = 525201411107845655ull;
+    for (;*key;++key){
+        h ^= (uint64_t)*key;
+        h *= 0x5bd1e9955bd1e995;
+        h ^= h >> 47;
+    }
+    return h;
+}
 
 static onion_connection_status websocket_cont(void *data, onion_websocket *ws, ssize_t dlen){
     FNAME();
-    uint32_t flags = *((uint32_t*)data);
+    WSdata *wsdata = (WSdata*)data;
     char tmp[BUFLEN+1];
     if(dlen > BUFLEN) dlen = BUFLEN;
 
@@ -46,19 +61,36 @@ static onion_connection_status websocket_cont(void *data, onion_websocket *ws, s
     tmp[len] = 0;
     //ONION_INFO("Read from websocket: %s (len=%d)", tmp, len);
     DBG("WS: got %s", tmp);
-    if(flags & WS_FLAG_NOTAUTHORIZED){ // not authorized over websocket
+    if(wsdata->flags & WS_FLAG_NOTAUTHORIZED){ // not authorized over websocket
         sessinfo *session = NULL;
         if(strncmp(tmp, "Akey=", 5) == 0){ // got authorized key - check it
             char *key = tmp + 5;
             session = getSession(key);
-            /* here we should make a proper check, but for now do simplest */
         }
         if(!session){
             onion_websocket_printf(ws, AUTH_ANS_NEEDAUTH);
             WARNX("Wrong websocket session ID");
             return OCS_FORBIDDEN;
         }
-        flags &= ~WS_FLAG_NOTAUTHORIZED; // clear non-authorized flag
+        //
+        onion_dict *json = onion_dict_from_json(session->data);
+        freeSessInfo(&session);
+        if(json){
+            uint64_t UAhash = MurmurOAAT64(onion_dict_get(json, "User-Agent"));
+            uint64_t IPhash = MurmurOAAT64(onion_dict_get(json, "User-IP"));
+            if(wsdata->IPhash != IPhash || wsdata->UAhash != UAhash){
+                onion_websocket_printf(ws, AUTH_ANS_WRONGIP);
+                WARNX("Websocket IP/UA are wrong");
+                return OCS_FORBIDDEN;
+            }
+            red("WSdata checked!\n");
+            onion_dict_free(json);
+        }else{
+            onion_websocket_printf(ws, AUTH_ANS_NOUSERDATA);
+            WARNX("No user IP and/or UA in database");
+            return OCS_FORBIDDEN;
+        }
+        wsdata->flags &= ~WS_FLAG_NOTAUTHORIZED; // clear non-authorized flag
         return OCS_NEED_MORE_DATA;
     }
     char *eq = strchr(tmp, '=');
@@ -75,7 +107,6 @@ onion_connection_status websocket_run(_U_ void *data, onion_request *req, onion_
     FNAME();
     onion_websocket *ws = onion_websocket_new(req, res);
     if (!ws){
-        green("PROC\n");
         DBG("Processed");
         return OCS_PROCESSED;
     }
@@ -83,8 +114,11 @@ onion_connection_status websocket_run(_U_ void *data, onion_request *req, onion_
     const char *host = onion_request_get_client_description(req);
     const char *UA = onion_request_get_header(req, "User-Agent");
     green("Got WS connection from %s (UA: %s)\n", host, UA);
-    uint32_t *flags = calloc(1, 4);
-    onion_websocket_set_userdata(ws, (void*)flags, free);
+    WSdata *wsdata = calloc(1, sizeof(WSdata));
+    wsdata->flags = WS_FLAG_NOTAUTHORIZED;
+    wsdata->IPhash = MurmurOAAT64(host);
+    wsdata->UAhash = MurmurOAAT64(UA);
+    onion_websocket_set_userdata(ws, (void*)wsdata, free);
     onion_websocket_set_callback(ws, websocket_cont);
     return OCS_WEBSOCKET;
 }

@@ -149,6 +149,7 @@ sessinfo *qookieSession(onion_request *req){
 }
 
 onion_connection_status auth(_U_ onion_handler *h, onion_request *req, onion_response *res){
+    int retcode = OCS_CLOSE_CONNECTION;
     if(!req || !res) return OCS_CLOSE_CONNECTION;
     if(onion_request_get_flags(req) & OR_HEAD) {
         onion_response_write_headers(res);
@@ -195,33 +196,27 @@ onion_connection_status auth(_U_ onion_handler *h, onion_request *req, onion_res
     userinfo *U = getUserData(username);
     if(!U){
         WARNX("User %s not found", username);
-        return OCS_FORBIDDEN;
+        retcode = OCS_FORBIDDEN;
+        goto closeconn;
     }
     char *pass = strdup(crypt(passwd, "$6$"));
     if(!pass){
         WARN("Error in ctypt or strdup");
         freeUserInfo(&U);
-        return OCS_FORBIDDEN;
+        retcode = OCS_FORBIDDEN;
+        goto closeconn;
     }
     int comp = strcmp(pass, U->password);
     freeUserInfo(&U);
     FREE(pass);
     if(comp){
         WARNX("User %s give wrong password", username);
-        return OCS_FORBIDDEN;
+        retcode = OCS_FORBIDDEN;
+        goto closeconn;
     }
     session = MALLOC(sessinfo, 1);
     session->atime = time(NULL);
     session->username = strdup(username);
-/*
-    onion_dict *data = onion_dict_new();
-    onion_dict_add(data, "UA", UA, 0);
-    onion_dict_add(data, "IP", host, 0);
-    onion_block *bl = onion_dict_to_json(data);
-    if(bl){
-        const char *json = onion_block_data(bl);
-        if(json) session->data = strdup(json);
-    }*/
     session->data = strdup(json);
     do{
         FREE(session->sessID);
@@ -238,7 +233,7 @@ onion_connection_status auth(_U_ onion_handler *h, onion_request *req, onion_res
     onion_response_write0(res, AUTH_ANS_AUTHOK);
 closeconn:
     freeSessInfo(&session);
-    return OCS_CLOSE_CONNECTION;
+    return retcode;
 }
 
 /**
@@ -552,22 +547,21 @@ int addSession(sessinfo *s, int modify){
     if(!s) return 1;
     sessinfo *byID = getSession(s->sessID);
     sessinfo *bysID = getSession(s->sockID);
+    int errfound = 0;
     if(byID || bysID){ // found session with same IDs
         if(modify){
             if(bysID && strcmp(bysID->sessID, s->sessID)){
-                freeSessInfo(&byID);
-                freeSessInfo(&bysID);
-                WARNX("Found another session with the same sockID");
-                return 2;
+                errfound = 2;
             }
         }else{
             if(byID) WARNX("Found another session with the same sessID");
             if(bysID) WARNX("Found another session with the same sockID");
-            freeSessInfo(&byID);
-            freeSessInfo(&bysID);
-            return 3;
+            errfound = 3;
         }
     }
+    freeSessInfo(&byID);
+    freeSessInfo(&bysID);
+    if(errfound) return errfound;
     pthread_mutex_lock(&sessionDB->mutex);
     // 1-sessID, 2-sockID, 3-atime, 4-username, 5-data
     sqlite3_reset(sessionDB->add);

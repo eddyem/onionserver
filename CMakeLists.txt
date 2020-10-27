@@ -35,14 +35,14 @@ find_package(Threads REQUIRED)
 
 ###### pkgconfig ######
 # pkg-config modules (for pkg-check-modules)
-set(MODULES usefull_macros sqlite3)
+set(MODULES usefull_macros sqlite3 onion)
 
 # find packages:
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(${PROJ} REQUIRED ${MODULES})
 
 ###### additional flags ######
-list(APPEND ${PROJ}_LIBRARIES "-lonion -lcrypt")
+list(APPEND ${PROJ}_LIBRARIES "-lcrypt")
 
 # change wrong behaviour with install prefix
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT AND CMAKE_INSTALL_PREFIX MATCHES "/usr/local")

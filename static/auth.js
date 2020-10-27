@@ -52,6 +52,7 @@ auth = function(){
 	}
 	function logout1(){
 		sendrequest("auth/?LogOut=1", _ilogin);
+		ws.close();
 	}
 	function sendlogpass(){
 		$("shadow").style.display = "none";
@@ -67,7 +68,7 @@ auth = function(){
 	var ws;
 	function wsinit(){
 		delete(ws);
-		ws = new WebSocket('wss://localhost:8081');
+		ws = new WebSocket('wss://localhost:8080/ws');
 		ws.onopen = function(){ws.send("Akey="+wsKey);}; // send key after init
 		ws.onclose = function(evt){
 			var text = "WebSocket closed: ";

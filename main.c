@@ -56,90 +56,68 @@ onion_connection_status get(_U_ onion_handler *h, onion_request *req, onion_resp
     return OCS_CLOSE_CONNECTION;
 }
 
-static onion *os = NULL, *ow = NULL;
+static onion *os = NULL;//, *ow = NULL;
+static int STOP = 0;
 void signals(int signo){
+    signal(signo, SIG_IGN);
+    STOP = 1;
+    if(os){
+        onion_free(os);
+    }
+    /*if(ow){
+        onion_free(ow);
+    }*/
     closeSQLite();
-    if(os) onion_free(os);
-    if(ow) onion_free(ow);
+    sleep(1);
     exit(signo);
 }
 
 // POST/GET server
 static void *runPostGet(_U_ void *data){
-    os = onion_new(O_THREADED);
+    FNAME();
+    if(STOP) return NULL;
+    os = onion_new(O_POOL);
     if(!(onion_flags(os) & O_SSL_AVAILABLE)){
         ONION_ERROR("SSL support is not available");
         signals(1);
     }
     int error = onion_set_certificate(os, O_SSL_CERTIFICATE_KEY, G.certfile, G.keyfile);
     if(error){
-        ONION_ERROR("Cant set certificate and key files (%s, %s)", G.certfile, G.keyfile);
+        ONION_ERROR("Can't set certificate and key files (%s, %s)", G.certfile, G.keyfile);
         signals(1);
     }
+    DBG("PostGet @ port %s", G.port);
     onion_set_port(os, G.port);
     onion_url *url = onion_root_url(os);
     onion_url_add_handler(url, "^static/", onion_handler_export_local_new("static"));
     onion_url_add_with_data(url, "", onion_shortcut_internal_redirect, "static/index.html", NULL);
     onion_url_add(url, "^auth/", auth);
     onion_url_add(url, "^get/", get);
+    onion_url_add(url, "ws", websocket_run);
     error = onion_listen(os);
-    if(error) ONION_ERROR("Cant create POST/GET server: %s", strerror(errno));
+    if(error) ONION_ERROR("Can't create POST/GET server: %s", strerror(errno));
     onion_free(os);
     return NULL;
 }
 
-// Websocket server
-static void *runWS(_U_ void *data){
-    ow = onion_new(O_THREADED);
-    if(!(onion_flags(ow) & O_SSL_AVAILABLE)){
-        ONION_ERROR("SSL support is not available");
-        signals(1);
-    }
-    int error = onion_set_certificate(ow, O_SSL_CERTIFICATE_KEY, G.certfile, G.keyfile);
-    if(error){
-        ONION_ERROR("Cant set certificate and key files (%s, %s)", G.certfile, G.keyfile);
-        signals(1);
-    }
-    onion_set_port(ow, G.wsport);
-    onion_url *url = onion_root_url(ow);
-    onion_url_add(url, "", websocket_run);
-    DBG("Listen websocket");
-    error = onion_listen(ow);
-    if(error) ONION_ERROR("Cant create POST/GET server: %s", strerror(errno));
-    onion_free(ow);
-    return NULL;
-}
-
 static void runServer(){
-    // if(G.logfilename) Cl_createlog();
     signal(SIGTERM, signals);
     signal(SIGINT, signals);
     signal(SIGQUIT, signals);
     signal(SIGTSTP, SIG_IGN);
     signal(SIGHUP, SIG_IGN);
-
-    pthread_t pg_thread, ws_thread;
+    // if(G.logfilename) Cl_createlog();
+    pthread_t pg_thread;//, ws_thread;
     if(pthread_create(&pg_thread, NULL, runPostGet, NULL)){
         ERR("pthread_create()");
     }
-    if(pthread_create(&ws_thread, NULL, runWS, NULL)){
-        ERR("pthread_create()");
-    }
     do{
-        if(pthread_kill(pg_thread, 0) == ESRCH){ // POST/GET died
+        if(STOP) return;
+        if(pthread_kill(pg_thread, 0) == ESRCH){ // server died
             WARNX("POST/GET server thread died");
             putlog("POST/GET server thread died");
             pthread_join(pg_thread, NULL);
             if(pthread_create(&pg_thread, NULL, runPostGet, NULL)){
-                putlog("pthread_create() failed");
-                ERR("pthread_create()");
-            }
-        }
-        if((pthread_kill(pg_thread, 0) == ESRCH) || (pthread_kill(ws_thread, 0) == ESRCH)){ // died
-            WARNX("Websocket server thread died");
-            putlog("Websocket server thread died");
-            pthread_join(ws_thread, NULL);
-            if(pthread_create(&ws_thread, NULL, runWS, NULL)){
                 putlog("pthread_create() failed");
                 ERR("pthread_create()");
             }
@@ -231,24 +209,6 @@ int main(int argc, char **argv){
         }
     }
     if(G.useradd) adduser();
-    /*
-    sessinfo *x = MALLOC(sessinfo, 1);
-    x->data = strdup("some data");
-    x->atime = time(NULL);
-    x->username = strdup("luser");
-    do{
-        FREE(x->sessID);
-        FREE(x->sockID);
-        x->sessID = onion_sessions_generate_id();
-        x->sockID = onion_sessions_generate_id();
-        if(!addSession(x)){
-            green("Insert session: ID=%s, sockid=%s, atime=%lld, user=%s, data=%s\n",
-            x->sessID, x->sockID, x->atime, x->username, x->data);
-            break;
-        }
-    }while(1);
-    freeSessInfo(&x);
-    */
     if(G.dumpSessDB) showAllSessions();
     if(G.delsession){
         if(!deleteSession(G.delsession))

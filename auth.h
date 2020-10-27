@@ -29,6 +29,8 @@
 #define AUTH_ANS_AUTHOK     "AuthOK"
 #define AUTH_ANS_LOGOUT     "LogOut"
 #define AUTH_ANS_NOPASSWD   "NoPassword"
+#define AUTH_ANS_NOUSERDATA "NoUserData"
+#define AUTH_ANS_WRONGIP    "WrongIPUA"
 
 typedef struct{
     char *username;     // user name
