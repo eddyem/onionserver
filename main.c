@@ -32,6 +32,7 @@
 
 #include "auth.h"
 #include "cmdlnopts.h"
+#include "netproto.h"
 #include "websockets.h"
 
 // temporary
@@ -107,17 +108,29 @@ static void runServer(){
     signal(SIGTSTP, SIG_IGN);
     signal(SIGHUP, SIG_IGN);
     // if(G.logfilename) Cl_createlog();
-    pthread_t pg_thread;//, ws_thread;
+    pthread_t pg_thread, main_thread;
     if(pthread_create(&pg_thread, NULL, runPostGet, NULL)){
+        ERR("pthread_create()");
+    }
+    if(pthread_create(&main_thread, NULL, runMainProc, NULL)){
         ERR("pthread_create()");
     }
     do{
         if(STOP) return;
         if(pthread_kill(pg_thread, 0) == ESRCH){ // server died
-            WARNX("POST/GET server thread died");
-            putlog("POST/GET server thread died");
+            WARNX("Server thread died");
+            putlog("Server thread died");
             pthread_join(pg_thread, NULL);
             if(pthread_create(&pg_thread, NULL, runPostGet, NULL)){
+                putlog("pthread_create() failed");
+                ERR("pthread_create()");
+            }
+        }
+        if(pthread_kill(main_thread, 0) == ESRCH){ // server died
+            WARNX("Main thread died");
+            putlog("Main thread died");
+            pthread_join(main_thread, NULL);
+            if(pthread_create(&main_thread, NULL, runMainProc, NULL)){
                 putlog("pthread_create() failed");
                 ERR("pthread_create()");
             }

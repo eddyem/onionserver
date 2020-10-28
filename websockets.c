@@ -17,11 +17,13 @@
  */
 
 #include "auth.h"
+#include "netproto.h"
 #include "websockets.h"
 
 #include <errno.h>
 #include <onion/dict.h>
 #include <onion/log.h>
+#include <onion/types_internal.h>
 #include <stdio.h>
 #include <string.h>
 #include <usefull_macros.h>
@@ -54,9 +56,11 @@ static onion_connection_status websocket_cont(void *data, onion_websocket *ws, s
     if(dlen > BUFLEN) dlen = BUFLEN;
 
     int len = onion_websocket_read(ws, tmp, dlen);
-    if(len <= 0){
+    if(!len) return OCS_NEED_MORE_DATA;
+    if(len < 0){
         ONION_ERROR("Error reading data: %d: %s (%d)", errno, strerror(errno), dlen);
-        return OCS_NEED_MORE_DATA;
+        unregister_WS();
+        return OCS_CLOSE_CONNECTION;
     }
     tmp[len] = 0;
     //ONION_INFO("Read from websocket: %s (len=%d)", tmp, len);
@@ -93,13 +97,7 @@ static onion_connection_status websocket_cont(void *data, onion_websocket *ws, s
         wsdata->flags &= ~WS_FLAG_NOTAUTHORIZED; // clear non-authorized flag
         return OCS_NEED_MORE_DATA;
     }
-    char *eq = strchr(tmp, '=');
-    if(eq){
-        *eq++ = 0;
-        onion_websocket_printf(ws, "parameter: '%s', its value: '%s'", tmp, eq);
-    }else{
-        onion_websocket_printf(ws, "Echo: %s", tmp);
-    }
+    process_WS_signal(ws, tmp);
     return OCS_NEED_MORE_DATA;
 }
 
@@ -120,5 +118,6 @@ onion_connection_status websocket_run(_U_ void *data, onion_request *req, onion_
     wsdata->UAhash = MurmurOAAT64(UA);
     onion_websocket_set_userdata(ws, (void*)wsdata, free);
     onion_websocket_set_callback(ws, websocket_cont);
+    register_WS(ws);
     return OCS_WEBSOCKET;
 }
