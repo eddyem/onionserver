@@ -98,17 +98,18 @@ void register_WS(onion_websocket *ws){
 void send_all_WS(char *data){
     if(strlen(data) == 0) return; // zero length
     WSlist *l = wslist;
+    if(!l) return;
     int cnt = 0;
     unregister_WS(); // check for dead ws
     while(l){
-        DBG("try to send");
+       //DBG("try to send");
         if(onion_websocket_printf(l->ws, "%s", data) <= 0){ // dead websocket? remove it from list
             DBG("Error printing - check for dead");
             unregister_WS();
         }else ++cnt;
         l = l->next;
     }
-    DBG("Send message %s to %d clients", data, cnt);
+    //DBG("Send message %s to %d clients", data, cnt);
 }
 
 void unregister_WS(){
@@ -128,6 +129,7 @@ void unregister_WS(){
                 wslist->last = l->prev; // we should delete last element
             }
             WSlist *nxt = l->next;
+            if(l == wslist) wslist = nxt; // delete the first element
             FREE(l);
             l = nxt;
             continue;

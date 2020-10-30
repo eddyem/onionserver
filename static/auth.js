@@ -43,7 +43,9 @@ auth = function(){
 		s.type = 'text/css';
 		s.innerHTML = '.shadow{position:absolute;text-align:center;vertical-align:center;top:0;display:none;left:0;width:100%;height:100%;background-color:lightGrey;opacity:0.9;}';
 		document.body.appendChild(s);
-		d.innerHTML = "<div>Login:</div><div><input type=text id='login'></div><div>Password:</div><div><input type=password id='passwd'></div><button onclick='auth.send();'>OK</button>";
+		d.innerHTML = 	"<form autocomplete='on'><div>Login:</div><div><input type='text' id='login' name='username'>" +
+						"</div><div>Password:</div><div><input type='password' id='passwd' name='password'>" +
+						"</div><button onclick='auth.send();'>OK</button></form>";
 		d.className = "shadow";
 		document.body.appendChild(d);
 	}
