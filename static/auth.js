@@ -68,16 +68,27 @@ auth = function(){
 	}
 	// websockets
 	var ws;
+	var reopenTimer;
 	function wsinit(){
 		delete(ws);
-		ws = new WebSocket('wss://localhost:8080/ws');
-		ws.onopen = function(){ws.send("Akey="+wsKey);}; // send key after init
+		console.log("Try to connect WS");
+		ws = new WebSocket('wss://localhost:8080/ws/');
+		clearTimeout(reopenTimer);
+		reopenTimer = setTimeout(wsinit, 5000);
+		ws.onopen = function(){ // send key after init
+			clearTimeout(reopenTimer);
+			console.log("WS connected");
+			ws.send("Akey="+wsKey);
+		}
 		ws.onclose = function(evt){
-			var text = "WebSocket closed: ";
-			if(evt.wasClean) text += "by remote side";
-			else text += "connection lost"
-			$('wsmsgs').innerHTML = text;
-		};
+			var text = "websocket closed";
+			if(evt.wasClean) text += " by remote side";
+			else text += ", connection lost"
+			parseErr(text);
+			console.log("WS closed");
+			clearTimeout(reopenTimer);
+			reopenTimer = setTimeout(wsinit, 1000);
+		}
 		ws.onmessage = function(evt){
 			$('wsmsgs').innerHTML = evt.data;
 		}

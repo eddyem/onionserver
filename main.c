@@ -57,7 +57,7 @@ onion_connection_status get(_U_ onion_handler *h, onion_request *req, onion_resp
     return OCS_CLOSE_CONNECTION;
 }
 
-static onion *os = NULL;//, *ow = NULL;
+static onion *os = NULL, *ow = NULL;
 static int STOP = 0;
 void signals(int signo){
     signal(signo, SIG_IGN);
@@ -65,9 +65,9 @@ void signals(int signo){
     if(os){
         onion_free(os);
     }
-    /*if(ow){
+    if(ow){
         onion_free(ow);
-    }*/
+    }
     closeSQLite();
     sleep(1);
     exit(signo);
@@ -77,7 +77,7 @@ void signals(int signo){
 static void *runPostGet(_U_ void *data){
     FNAME();
     if(STOP) return NULL;
-    os = onion_new(O_POOL);
+    os = onion_new(O_THREADED);
     if(!(onion_flags(os) & O_SSL_AVAILABLE)){
         ONION_ERROR("SSL support is not available");
         signals(1);
@@ -94,13 +94,37 @@ static void *runPostGet(_U_ void *data){
     onion_url_add_with_data(url, "", onion_shortcut_internal_redirect, "static/index.html", NULL);
     onion_url_add(url, "^auth/", auth);
     onion_url_add(url, "^get/", get);
-    onion_url_add(url, "ws", websocket_run);
+    onion_url_add(url, "^ws/", websocket_run);
     error = onion_listen(os);
     if(error) ONION_ERROR("Can't create POST/GET server: %s", strerror(errno));
     onion_free(os);
     return NULL;
 }
-
+/*
+static void *runWS(_U_ void *data){
+    FNAME();
+    if(STOP) return NULL;
+    ow = onion_new(O_THREADED);
+    DBG("here");
+    if(!(onion_flags(ow) & O_SSL_AVAILABLE)){
+        ONION_ERROR("SSL support is not available");
+        signals(1);
+    }
+    int error = onion_set_certificate(ow, O_SSL_CERTIFICATE_KEY, G.certfile, G.keyfile);
+    if(error){
+        ONION_ERROR("Can't set certificate and key files (%s, %s)", G.certfile, G.keyfile);
+        signals(1);
+    }
+    DBG("WS @ port %s", G.wsport);
+    onion_set_port(ow, G.wsport);
+    onion_url *url = onion_root_url(ow);
+    onion_url_add(url, "", websocket_run);
+    error = onion_listen(ow);
+    if(error) ONION_ERROR("Can't create WS server: %s", strerror(errno));
+    onion_free(ow);
+    return NULL;
+}
+*/
 static void runServer(){
     signal(SIGTERM, signals);
     signal(SIGINT, signals);
@@ -108,10 +132,13 @@ static void runServer(){
     signal(SIGTSTP, SIG_IGN);
     signal(SIGHUP, SIG_IGN);
     // if(G.logfilename) Cl_createlog();
-    pthread_t pg_thread, main_thread;
+    pthread_t pg_thread, main_thread;//, ws_thread;
     if(pthread_create(&pg_thread, NULL, runPostGet, NULL)){
         ERR("pthread_create()");
     }
+    /*if(pthread_create(&ws_thread, NULL, runWS, NULL)){
+        ERR("pthread_create()");
+    }*/
     if(pthread_create(&main_thread, NULL, runMainProc, NULL)){
         ERR("pthread_create()");
     }
@@ -126,6 +153,15 @@ static void runServer(){
                 ERR("pthread_create()");
             }
         }
+       /* if(pthread_kill(ws_thread, 0) == ESRCH){ // server died
+            WARNX("WS thread died");
+            putlog("WS thread died");
+            pthread_join(ws_thread, NULL);
+            if(pthread_create(&ws_thread, NULL, runWS, NULL)){
+                putlog("pthread_create() failed");
+                ERR("pthread_create()");
+            }
+        }*/
         if(pthread_kill(main_thread, 0) == ESRCH){ // server died
             WARNX("Main thread died");
             putlog("Main thread died");

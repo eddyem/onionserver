@@ -56,10 +56,14 @@ static onion_connection_status websocket_cont(void *data, onion_websocket *ws, s
     if(dlen > BUFLEN) dlen = BUFLEN;
 
     int len = onion_websocket_read(ws, tmp, dlen);
+    if(OWS_CONNECTION_CLOSE == onion_websocket_get_opcode(ws)){
+        unregister_WS(ws);
+        return OCS_CLOSE_CONNECTION;
+    }
     if(!len) return OCS_NEED_MORE_DATA;
     if(len < 0){
         ONION_ERROR("Error reading data: %d: %s (%d)", errno, strerror(errno), dlen);
-        unregister_WS();
+        unregister_WS(ws);
         return OCS_CLOSE_CONNECTION;
     }
     tmp[len] = 0;
@@ -72,7 +76,7 @@ static onion_connection_status websocket_cont(void *data, onion_websocket *ws, s
             session = getSession(key);
         }
         if(!session){
-            onion_websocket_printf(ws, AUTH_ANS_NEEDAUTH);
+            send_one_WS(ws, AUTH_ANS_NEEDAUTH);
             WARNX("Wrong websocket session ID");
             return OCS_FORBIDDEN;
         }
@@ -83,14 +87,14 @@ static onion_connection_status websocket_cont(void *data, onion_websocket *ws, s
             uint64_t UAhash = MurmurOAAT64(onion_dict_get(json, "User-Agent"));
             uint64_t IPhash = MurmurOAAT64(onion_dict_get(json, "User-IP"));
             if(wsdata->IPhash != IPhash || wsdata->UAhash != UAhash){
-                onion_websocket_printf(ws, AUTH_ANS_WRONGIP);
+                send_one_WS(ws, AUTH_ANS_WRONGIP);
                 WARNX("Websocket IP/UA are wrong");
                 return OCS_FORBIDDEN;
             }
-            red("WSdata checked!\n");
+            DBG("WSdata checked!\n");
             onion_dict_free(json);
         }else{
-            onion_websocket_printf(ws, AUTH_ANS_NOUSERDATA);
+            send_one_WS(ws, AUTH_ANS_NOUSERDATA);
             WARNX("No user IP and/or UA in database");
             return OCS_FORBIDDEN;
         }
@@ -102,22 +106,21 @@ static onion_connection_status websocket_cont(void *data, onion_websocket *ws, s
 }
 
 onion_connection_status websocket_run(_U_ void *data, onion_request *req, onion_response *res){
-    FNAME();
     onion_websocket *ws = onion_websocket_new(req, res);
     if (!ws){
-        DBG("Processed");
         return OCS_PROCESSED;
     }
-    DBG("WS ready");
+    if(register_WS(ws)){
+        return OCS_CLOSE_CONNECTION;
+    }
     const char *host = onion_request_get_client_description(req);
     const char *UA = onion_request_get_header(req, "User-Agent");
-    green("Got WS connection from %s (UA: %s)\n", host, UA);
+    DBG("Got WS connection from %s (UA: %s)\n", host, UA);
     WSdata *wsdata = calloc(1, sizeof(WSdata));
     wsdata->flags = WS_FLAG_NOTAUTHORIZED;
     wsdata->IPhash = MurmurOAAT64(host);
     wsdata->UAhash = MurmurOAAT64(UA);
     onion_websocket_set_userdata(ws, (void*)wsdata, free);
     onion_websocket_set_callback(ws, websocket_cont);
-    register_WS(ws);
     return OCS_WEBSOCKET;
 }

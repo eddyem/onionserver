@@ -21,12 +21,17 @@
 
 #include "websockets.h"
 
+// not more than 8 (or need to patch libonion)
+#define MAX_WSCLIENTS       (5)
+
 void *runMainProc(void *data);
 
 void process_WS_signal(onion_websocket *ws, char *signal);
-void register_WS(onion_websocket *ws);
-void unregister_WS();
+int register_WS(onion_websocket *ws);
+void unregister_WS(onion_websocket *ws);
+void cleanup_WS();
 void send_all_WS(char *data);
+void send_one_WS(onion_websocket *ws, char *data);
 
 #define NETPROTO_H__
 #endif // NETPROTO_H__

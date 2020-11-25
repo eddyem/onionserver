@@ -25,16 +25,28 @@
 #include <time.h>
 #include <usefull_macros.h>
 
+const char NormClose[2] = {0x10, 0x00}; // Normal close
+
 typedef struct list_{
-    onion_websocket *ws;
-    struct list_ *next;
-    struct list_ *prev;
-    struct list_ *last;
+    onion_websocket *ws;        // websocket
+    pthread_mutex_t mutex;      // writing mutex
+    struct list_ *next;         // next in list
 } WSlist;
 
+// total amount of connected clients
+static int Nconnected = 0;
+// list of websockets
 static WSlist *wslist = NULL;
+// mutex for main proc
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-static char message[256];
+
+// get the latest WS in list
+static WSlist *getlast(){
+    if(!wslist) return NULL;
+    WSlist *l = wslist;
+    while(l->next) l = l->next;
+    return l;
+}
 
 /**
  * @brief runMainProc - main data process
@@ -42,6 +54,7 @@ static char message[256];
  * @return
  */
 void *runMainProc(_U_ void *data){
+    char message[256];
     while(1){
         int changed = 0;
         pthread_mutex_lock(&mutex);
@@ -64,31 +77,43 @@ void *runMainProc(_U_ void *data){
  * @param signal (i) - command received
  */
 void process_WS_signal(onion_websocket *ws, char *signal){
+    char buf[256];
     char *eq = strchr(signal, '=');
     if(eq){
         *eq++ = 0;
-        onion_websocket_printf(ws, "parameter: '%s', its value: '%s'", signal, eq);
+        snprintf(buf, 256, "parameter: '%s', its value: '%s'", signal, eq);
+        send_one_WS(ws, buf);
     }else{
-        onion_websocket_printf(ws, "Echo: %s", signal);
+        snprintf(buf, 256, "Echo: %s", signal);
+        send_one_WS(ws, buf);
     }
 }
 
 /**
  * @brief register_WS - add recently opened websocket to common list
  * @param ws - websocket
+ * @return 0 if all OK
  */
-void register_WS(onion_websocket *ws){
-    green("Add NEW websocket\n");
-    if(!wslist){
-        wslist = MALLOC(WSlist, 1);
-        wslist->ws = ws;
-        wslist->last = wslist;
-    }else{
-        wslist->last->next = MALLOC(WSlist, 1);
-        wslist->last->next->ws = ws;
-        wslist->last->next->prev = wslist->last;
-        wslist->last = wslist->last->next;
+int register_WS(onion_websocket *ws){
+    if(Nconnected >= MAX_WSCLIENTS){ // no more connected
+        onion_websocket_printf(ws, "Maximum of %d clientsalready reached", MAX_WSCLIENTS);
+        onion_websocket_close(ws, NormClose);
+        return 1;
     }
+    DBG("Add NEW websocket\n");
+    WSlist **curr = NULL;
+    if(!wslist){ // the first element
+        curr = &wslist;
+    }else{
+        WSlist *last = getlast();
+        curr = &last->next;
+    }
+    WSlist *tmp = MALLOC(WSlist, 1);
+    tmp->ws = ws;
+    pthread_mutex_init(&tmp->mutex, NULL);
+    *curr = tmp;
+    ++Nconnected;
+    return 0;
 }
 
 /**
@@ -98,42 +123,82 @@ void register_WS(onion_websocket *ws){
 void send_all_WS(char *data){
     if(strlen(data) == 0) return; // zero length
     WSlist *l = wslist;
-    if(!l) return;
-    int cnt = 0;
-    unregister_WS(); // check for dead ws
+    if(!l){
+        DBG("list is empty");
+        return;
+    }
+    //int cnt = 0;
     while(l){
        //DBG("try to send");
-        if(onion_websocket_printf(l->ws, "%s", data) <= 0){ // dead websocket? remove it from list
-            DBG("Error printing - check for dead");
-            unregister_WS();
-        }else ++cnt;
+        if(0 == pthread_mutex_lock(&l->mutex)){
+            if(onion_websocket_printf(l->ws, "%s", data) <= 0){ // dead websocket? remove it from list
+                DBG("Error printing - check for dead");
+                pthread_mutex_unlock(&l->mutex);
+                unregister_WS(l->ws);
+            }//else ++cnt;
+            pthread_mutex_unlock(&l->mutex);
+        }else DBG("CANT LOCK");
         l = l->next;
     }
     //DBG("Send message %s to %d clients", data, cnt);
 }
 
-void unregister_WS(){
+void send_one_WS(onion_websocket *ws, char *data){
+    if(strlen(data) == 0) return; // zero length
     WSlist *l = wslist;
+    if(!l) return;
     while(l){
-        if(l->ws->req->connection.fd < 0){
-            red("Found dead WS, remove it\n");
-            if(l->prev){
-                //DBG("l->prev->next = l->next");
-                l->prev->next = l->next;
-            }
-            if(l->next){
-                //DBG("l->next->prev = l->prev");
-                l->next->prev = l->prev;
-            }else{
-                //DBG("wslist->last = l->prev");
-                wslist->last = l->prev; // we should delete last element
-            }
-            WSlist *nxt = l->next;
-            if(l == wslist) wslist = nxt; // delete the first element
+        if(l->ws == ws){
+            if(0 == pthread_mutex_lock(&l->mutex)){
+                if(onion_websocket_printf(l->ws, "%s", data) <= 0){ // dead websocket? remove it from list
+                    DBG("Error printing - check for dead");
+                    pthread_mutex_unlock(&l->mutex);
+                    unregister_WS(ws);
+                }
+                pthread_mutex_unlock(&l->mutex);
+            }else DBG("CANT LOCK");
+            break;
+        }
+        l = l->next;
+    }
+}
+
+// remove ws from list
+void unregister_WS(onion_websocket *ws){
+    WSlist *l = wslist, *prev = NULL;
+    while(l){
+        if(l->ws == ws){
+            pthread_mutex_lock(&l->mutex);
+            WSlist *next = l->next;
+            if(l == wslist) wslist = next; // delete the first element
+            else if(prev) prev->next = next;
+            pthread_mutex_destroy(&l->mutex);
             FREE(l);
-            l = nxt;
+            --Nconnected;
+            return;
+        }
+        prev = l;
+        l = l->next;
+    }
+}
+
+// find bad websockets and remove them from list
+void cleanup_WS(){
+    WSlist *l = wslist, *prev = NULL;
+    while(l){
+        if(onion_websocket_get_opcode(l->ws) == OWS_CONNECTION_CLOSE){ // closed
+            DBG("Found dead WS, remove it\n");
+            pthread_mutex_lock(&l->mutex);
+            WSlist *next = l->next;
+            if(l == wslist) wslist = next; // delete the first element
+            else if(prev) prev->next = next;
+            pthread_mutex_destroy(&l->mutex);
+            FREE(l);
+            --Nconnected;
+            l = next;
             continue;
         }
+        prev = l;
         l = l->next;
     }
 }

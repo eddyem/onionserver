@@ -31,13 +31,15 @@ function sendrequest(req_STR, onOK, postdata){
 		}
 	}
 	request.send(postdata);
-	timeout_id = setTimeout(function(){request.onreadystatechange=null; request.abort(); parseErr("request timeout");}, 5000);
+	timeout_id = setTimeout(function(){request.onreadystatechange = null; request.abort(); parseErr("Request timeout");}, 5000);
 }
 
+var errtmout;
 function parseErr(txt){
 	console.log("Error: " + txt);
 	var msgDiv = $('errmsg');
 	if(!msgDiv) return;
 	msgDiv.innerHTML = "Error: " + txt;
-	setTimeout(function(){msgDiv.innerHTML = "";}, 3500);
+	clearTimeout(errtmout);
+	errtmout = setTimeout(function(){msgDiv.innerHTML = "&nbsp;";}, 3500);
 }
